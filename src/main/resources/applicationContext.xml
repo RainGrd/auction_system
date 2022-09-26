@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/util  http://www.springframework.org/schema/util/spring-util.xsd
+                           http://www.springframework.org/schema/context  http://www.springframework.org/schema/context/spring-context.xsd
+                           http://www.springframework.org/schema/aop  http://www.springframework.org/schema/aop/spring-aop.xsd
+                           http://www.springframework.org/schema/tx  http://www.springframework.org/schema/tx/spring-tx.xsd">
+
+    <!--开启组件扫描(全包扫描的方式)-->
+    <context:component-scan base-package="com.bdqn.auction">
+        <context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+    </context:component-scan>
+    <!--引入外部属性文件-->
+    <context:property-placeholder location="classpath*:jdbc.properties" ignore-unresolvable="true"/>
+
+    <!--声明数据源，配置连接池-->
+    <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource" destroy-method="close">
+        <!-- driverClassName可以不要（官方明确说明）-->
+        <property name="driverClass" value="${jdbc.driver}"/>
+        <property name="jdbcUrl" value="${jdbc.url}"/>
+        <property name="user" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+        <!--        <property name="maxActive" value="${jdbc.maxActive}"></property>  &lt;!&ndash;最大连接数&ndash;&gt;-->
+        <!-- 当连接池中的连接耗尽的时候c3p0一次同时获取的连接数  -->
+        <property name="acquireIncrement" value="5"/>
+        <!-- 初始连接池大小 -->
+        <property name="initialPoolSize" value="10"/>
+        <!-- 连接池中连接最小个数 -->
+        <property name="minPoolSize" value="5"/>
+        <!-- 连接池中连接最大个数 -->
+        <property name="maxPoolSize" value="20"/>
+    </bean>
+    <!--声明的是mybatis中提供的SqlSessionFactoryBean类，这个类内部创建SqlSessionFactory的-->
+    <bean id="sessionFactoryBean" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <!--set注入，把数据库连接池赋给dataSource属性-->
+        <property name="dataSource" ref="dataSource"/>
+        <!--配置别名-->
+<!--        <property name="typeAliasesPackage"
+                  value="com.bdqn.auction.settings.entity,com.bdqn.auction.workbench.auction.entity"/>-->
+        <!--mybatis主配置文件的位置
+            configLocation属性是Resource类型，读取配置文件
+            它的赋值，使用value，指定文件的路径,使用classpath:表示文件的位置-->
+        <property name="configLocation" value="classpath:mybatis-config.xml"/>
+        <!--        <property name="mapperLocations" >
+                    <list>
+                        <value>classpath*:com/crm/settings/mapper/*Mapper.xml</value>
+                    </list>
+                </property>-->
+        <!--配置分页插件-->
+        <property name="plugins">
+            <array>
+                <bean class="com.github.pagehelper.PageInterceptor">
+                    <property name="properties">
+                        <props>
+                            <prop key="helperDialect">mysql</prop>
+                            <prop key="reasonable">true</prop>
+                        </props>
+                    </property>
+                </bean>
+            </array>
+        </property>
+    </bean>
+
+    <!--创建dao对象,使用sqlSession的getMapper (StudentDao.class )
+        MapperScannerConfigurer:在内部调用getMapper()生成每个dao接口的代理对象-->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <!--指定SqlSess ionFactory对象的-->
+        <property name="sqlSessionFactoryBeanName" value="sessionFactoryBean"/>
+        <!--指定包名，包名是dao/mapper接口所在的包名。
+         MapperScannerConfigurer会扫描这个包中的所有接口， 把每个接口都执行
+        一次getMapper()方法，得到每个接口的dao对象。
+        创建好的dao/mapper对象放入到spring的容器中的。-->
+        <property name="basePackage"
+                  value="com.bdqn.auction.settings.mapper,com.bdqn.auction.workbench.auction.mapper"/>
+    </bean>
+    <!-- 使用spring的事务处理 -->
+    <!--1. 声明事务管理器-->
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <!--连接的数据库,指定数据源-->
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+    <!--配置事务-->
+    <aop:config>
+        <!--切点表达式-->
+        <aop:pointcut id="allMethodPointcut"
+                      expression="execution(* com.bdqn.auction.settings.service.*.*(..)) || execution(* com.bdqn.auction.workbench.auction.service.*.*(..))"/>
+        <!--引用切点表达式-->
+        <aop:advisor advice-ref="transactionInterceptor" pointcut-ref="allMethodPointcut"/>
+    </aop:config>
+    <tx:advice id="transactionInterceptor" transaction-manager="transactionManager">
+        <tx:attributes>
+            <!--配置需要事务增强的方法-->
+            <tx:method name="add*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="save*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="edit*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="update*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="delete*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="do*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="*" propagation="REQUIRED" read-only="true"/>
+        </tx:attributes>
+    </tx:advice>
+    <!--    2.开启事务注解驱动，告诉spring使用注解管理事务，创建代理对象
+               transaction-manager :事务管理器对象的id-->
+    <tx:annotation-driven transaction-manager="transactionManager"/>
+
+    <!--开启proxy-target-class="true" 会使用 cglib 继承的方式去创建代理-->
+    <aop:config proxy-target-class="true"/>
+
+    <!--开启Aspect生成代理对象-->
+    <aop:aspectj-autoproxy/>
+</beans>
+
