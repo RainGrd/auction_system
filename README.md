@@ -1,0 +1,5 @@
+在线拍卖系统
+请描述在线拍卖系统的业务流程
+请说明ResultSetMetaData接口的作用并列举它的几个主要方法
+请说明ThreadLocal类的作用
+
